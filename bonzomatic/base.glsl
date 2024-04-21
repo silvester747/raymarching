@@ -126,7 +126,7 @@ vec3 normal(vec3 p) {
   return normalize(n);
 }
 
-vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, out float ref) {
+vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, out vec3 ref) {
   vec3 p = ro + rd * d;
 
   vec3 light_pos = vec3(5. , 5., -5.);
@@ -138,7 +138,7 @@ vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, ou
   // Determine object lighting here
   vec3 col = vec3(1, 1, 0);
   col = col * dif;
-  ref = .2;
+  ref = vec3(.2);
 
   ro = p + n * SURF_DIST * 3.;
   rd = r;
@@ -166,10 +166,11 @@ float raymarch(vec3 ro, vec3 rd, out int obj_mat, out vec3 obj_p) {
   return d;
 }
 
-vec3 render(inout vec3 ro, inout vec3 rd, inout float ref, out bool no_obj) {
+vec3 render(inout vec3 ro, inout vec3 rd, inout vec3 ref, out bool no_obj) {
   int obj_mat = NO_MAT;
   vec3 obj_p = vec3(0.);
 	float d = raymarch(ro, rd, obj_mat, obj_p);
+  ref *= 0.;
     
   if (d < MAX_DIST) {
     no_obj = false;
@@ -188,8 +189,8 @@ vec3 render(vec2 pix_coord) {
   vec3 rd = camera(uv, ro, lookat, zoom);
 
   vec3 col = vec3(0.);
-  float ref = 0.;
-  float fil = 1.;
+  vec3 ref = vec3(0.);
+  vec3 fil = vec3(1.);
   const int NUM_BOUNCES = 2;
   for (int i = 0; i < NUM_BOUNCES; i++) {
     bool no_obj;

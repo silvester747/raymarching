@@ -169,7 +169,7 @@ vec3 normal(vec3 p) {
   return normalize(n);
 }
 
-vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, out float ref) {
+vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, out vec3 ref) {
   vec3 p = ro + rd * d;
 
   vec3 light_pos = vec3(5. , 5., -5.);
@@ -177,25 +177,27 @@ vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, ou
   vec3 n = normal(p);
   vec3 r = reflect(rd, n);
   float dif = clamp(dot(l, n), 0., 1.);
+  float fresnel = pow(clamp(1.+dot(rd, n), 0., 1.), 5.);
 
+  float electron_fresnel = mix(.01, .7, fresnel);
   vec3 col = vec3(0);
   if (obj_mat == MAT_BALL) {
-    col = vec3(0.3);
-    ref = .2 + .7 * abs(sin(fGlobalTime / 10));
+    col = vec3(1., .7, .2);
+    ref = col * .2 + .7 * abs(sin(fGlobalTime / 10));
   } else if (obj_mat == MAT_FRAME) {
     col = vec3(.9, .9, .9);
-    ref = .1;
+    ref = vec3(mix(.01, .1, fresnel));
   } else if (obj_mat == MAT_WIRES) {
-    ref = .9;
+    ref = vec3(.9);
     col = vec3(0.1);
   } else if (obj_mat == MAT_ELECTRON_RED) {
-    ref = .01;
+    ref = vec3(electron_fresnel);
     col = vec3(1, 0, 0);
   } else if (obj_mat == MAT_ELECTRON_GREEN) {
-    ref = .01;
+    ref = vec3(electron_fresnel);
     col = vec3(0, 1, 0);
   } else if (obj_mat == MAT_ELECTRON_BLUE) {
-    ref = .01;
+    ref = vec3(electron_fresnel);
     col = vec3(0, 0, 1);
   }
   col = col * dif;
@@ -226,10 +228,11 @@ float raymarch(vec3 ro, vec3 rd, out int obj_mat, out vec3 obj_p) {
   return d;
 }
 
-vec3 render(inout vec3 ro, inout vec3 rd, inout float ref, out bool no_obj) {
+vec3 render(inout vec3 ro, inout vec3 rd, inout vec3 ref, out bool no_obj) {
   int obj_mat = NO_MAT;
   vec3 obj_p = vec3(0.);
 	float d = raymarch(ro, rd, obj_mat, obj_p);
+  ref *= 0.;
     
   if (d < MAX_DIST) {
     no_obj = false;
@@ -248,8 +251,8 @@ vec3 render(vec2 pix_coord) {
   vec3 rd = camera(uv, ro, lookat, zoom);
 
   vec3 col = vec3(0.);
-  float ref = 0.;
-  float fil = 1.;
+  vec3 ref = vec3(0.);
+  vec3 fil = vec3(1.);
   const int NUM_BOUNCES = 2;
   for (int i = 0; i < NUM_BOUNCES; i++) {
     bool no_obj;
