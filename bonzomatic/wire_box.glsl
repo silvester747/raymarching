@@ -26,6 +26,12 @@ const float M_PI = 3.1415926535897932384626433832795;
 const float M_2PI = (2 * M_PI);
 
 const int NO_MAT = 0;
+const int MAT_BALL = 1;
+const int MAT_FRAME = 2;
+const int MAT_WIRES = 3;
+const int MAT_ELECTRON_RED = 4;
+const int MAT_ELECTRON_GREEN = 5;
+const int MAT_ELECTRON_BLUE = 6;
 
 //
 // Shape functions
@@ -99,16 +105,53 @@ float fft(in float freq)
 // Scene
 //
 vec3 background(void) {
-  return vec3(0.1, 0.1, 0.3);
+  vec2 uv = gl_FragCoord.xy/v2Resolution.xy;
+  return vec3(uv.xy, uv.y);
 }
 
 float map(in vec3 p, out int obj_mat, out vec3 obj_p) {
   float d = MAX_DIST;
   obj_mat = NO_MAT;
 
-  // Create objects here
-  d = sdBox(p, vec3(1, 1, 1));
+  // Frame width 0. causes only a thin line
+  // Subtracting .05 makes lines round with a radius
+  float box = sdBoxFrame(p, vec3(1, 1, 1), 0.) - .03;
 
+  float sphere = sdSphere(p, .3);
+
+  float electron_red = sdSphere(p - vec3(.8 * sin(fGlobalTime * 3.), .8 * sin(fGlobalTime * 3.), .8 * cos(fGlobalTime * 3.)), .15);
+  float electron_green = sdSphere(p - vec3(.8 * sin(fGlobalTime * 3. + M_PI - .2), .8 * sin(fGlobalTime * 3. + .5 * M_PI), .8 * cos(fGlobalTime * 3. + M_PI - .2)), .15);
+  float electron_blue = sdSphere(p - vec3(.8 * sin(fGlobalTime * 3. + .6), .8 * -sin(fGlobalTime * 3.), .8 * cos(fGlobalTime * 3. + .6)), .15);
+
+  // Mirror the following SDF around all axes
+  p.xyz = abs(p.xyz);
+
+  float lines = sdCapsule(p, vec3(-1.), vec3(1.), .0001);
+
+  if (box < d) {
+    d = box;
+    obj_mat = MAT_FRAME;
+  } 
+  if (sphere < d) {
+    d = sphere;
+    obj_mat = MAT_BALL;
+  } 
+  if (lines < d) {
+    d = lines;
+    obj_mat = MAT_WIRES;
+  }
+  if (electron_red < d) {
+    d = electron_red;
+    obj_mat = MAT_ELECTRON_RED;
+  }
+  if (electron_green < d) {
+    d = electron_green;
+    obj_mat = MAT_ELECTRON_GREEN;
+  }
+  if (electron_blue < d) {
+    d = electron_blue;
+    obj_mat = MAT_ELECTRON_BLUE;
+  }
   return d;
 }
 
@@ -135,10 +178,27 @@ vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, ou
   vec3 r = reflect(rd, n);
   float dif = clamp(dot(l, n), 0., 1.);
 
-  // Determine object lighting here
-  vec3 col = vec3(1, 1, 0);
+  vec3 col = vec3(0);
+  if (obj_mat == MAT_BALL) {
+    col = vec3(0.3);
+    ref = .2 + .7 * abs(sin(fGlobalTime / 10));
+  } else if (obj_mat == MAT_FRAME) {
+    col = vec3(.9, .9, .9);
+    ref = .1;
+  } else if (obj_mat == MAT_WIRES) {
+    ref = .9;
+    col = vec3(0.1);
+  } else if (obj_mat == MAT_ELECTRON_RED) {
+    ref = .01;
+    col = vec3(1, 0, 0);
+  } else if (obj_mat == MAT_ELECTRON_GREEN) {
+    ref = .01;
+    col = vec3(0, 1, 0);
+  } else if (obj_mat == MAT_ELECTRON_BLUE) {
+    ref = .01;
+    col = vec3(0, 0, 1);
+  }
   col = col * dif;
-  ref = .2;
 
   ro = p + n * SURF_DIST * 3.;
   rd = r;
