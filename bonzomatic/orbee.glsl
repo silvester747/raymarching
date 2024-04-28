@@ -175,8 +175,19 @@ float fft(in float freq)
 //
 // Scene
 //
+const float terrain_speed = 4;
+const float orbee_speed = 2;
+
+vec3 camera_lookat();
+vec3 camera_origin();
 vec3 background(void) {
-  return vec3(0.1, 0.1, 0.3);
+  vec2 uv = gl_FragCoord.xy/v2Resolution.y;
+  vec3 camera_direction = camera_lookat() - camera_origin();
+  uv.x += .1*camera_direction.x;
+  uv.y += .1*camera_direction.y;
+  uv.x += .05 * fGlobalTime;
+  vec4 noise = texture(texNoise, uv);
+  return vec3(0. + 2*noise.x, 0.3 + 3*noise.x, 0.6 + noise.y);
 }
 
 float orbee(in vec3 p, out int obj_mat) {
@@ -213,10 +224,11 @@ float terrain_height(in vec3 p) {
 }
 
 float terrain(in vec3 p, out int obj_mat) {
+
   vec3 p_trees = p;
   p_trees.x = -abs(p_trees.x);
   p_trees.y = p.y - terrain_height(p);
-  p_trees.z += 2*fGlobalTime;
+  p_trees.z += terrain_speed * fGlobalTime;
   p_trees.z += .5*p_trees.x;
 
   vec2 id_trees = round(p_trees.xz/.8);
@@ -235,10 +247,10 @@ float terrain(in vec3 p, out int obj_mat) {
   }
 
   float terrain_d = p.y;
-  float road_d = p.y + terrain_height(vec3(.21, 0, 0));
+  float road_d = p.y - terrain_height(vec3(.21, 0, 0));
 
   if (abs(p.x) < .01) {
-    if (mod(p.z + 2*fGlobalTime, .3) <= 0.1) {
+    if (mod(p.z + terrain_speed * fGlobalTime, .3) <= 0.1) {
       obj_mat = MAT_ROAD_LINE;
       terrain_d = road_d;
     } else {
@@ -271,14 +283,12 @@ float road_deform(in vec3 p) {
   const float a_curve = 2. * M_PI;
   const float w_curve = 4.;
 
-  float progress = mod(p.z + 2*fGlobalTime, d_straight + d_curve);
+  float progress = mod(p.z + terrain_speed * fGlobalTime, d_straight + d_curve);
   if (progress < d_straight) {
     return 0.;
   } else {
     return (cos(((progress - d_straight) / d_curve) * a_curve) - 1.) * w_curve;
   }
-
-  return .01 * (smoothstep(.2, .7, sin(fGlobalTime / 10)) - smoothstep(-.2, -.7, sin(fGlobalTime / 10))) * pow(p.z, 2);
 }
 
 float map(in vec3 p, out int obj_mat, out vec3 obj_p) {
@@ -290,12 +300,24 @@ float map(in vec3 p, out int obj_mat, out vec3 obj_p) {
 
   int orbee_mat;
   vec3 p_orbee = p;
-  p_orbee *= rotateZ(.1*cos(fGlobalTime));
-  p_orbee.y += .01 * (1.04 + sin(fGlobalTime*30));
+  float id_orbee = round((p_orbee.z + (terrain_speed - orbee_speed) * fGlobalTime) / 8.); 
+  if (mod(id_orbee, 2) == 0) {
+    p_orbee *= rotateZ(.1*cos(fGlobalTime));
+  } else {
+    p_orbee *= rotateZ(.1*cos(fGlobalTime + M_PI));
+  }
+  p_orbee.y -= .1;
+  p_orbee.y -= .01 * (1.04 + sin(fGlobalTime*30));
   p_orbee.x -= .10;
-  p_orbee.z -= 8.*round(p_orbee.z/8);
-  p_orbee *= rotateY(3*M_PI * smoothstep(9, 10, mod(2*fGlobalTime, 20)));
-  p_orbee *= rotateY(-3*M_PI * smoothstep(19, 20, mod(2*fGlobalTime, 20)));
+  p_orbee.z += (terrain_speed - orbee_speed) * fGlobalTime;
+  p_orbee.z -= 8. * round(p_orbee.z / 8.);
+  if (mod(id_orbee, 2) == 0) {
+    p_orbee *= rotateY(3*M_PI * smoothstep(9, 10, mod(2*fGlobalTime, 20)));
+    p_orbee *= rotateY(-3*M_PI * smoothstep(19, 20, mod(2*fGlobalTime, 20)));
+  } else {
+    p_orbee *= rotateY(-3*M_PI * smoothstep(9, 10, mod(2*fGlobalTime, 20)));
+    p_orbee *= rotateY(3*M_PI * smoothstep(19, 20, mod(2*fGlobalTime, 20)));
+  }
   float orbee_d = orbee(p_orbee, orbee_mat);
 
   int road_mat;
@@ -360,7 +382,7 @@ vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, ou
   if (obj_mat == MAT_LANDSCAPE) {
     vec2 noise_p = p.xz;
     noise_p.x += road_deform(p);
-    noise_p.y += 2*fGlobalTime;
+    noise_p.y += terrain_speed * fGlobalTime;
     vec4 noise = texture(texNoise, noise_p);
     col = vec3(0, 1-noise.y, 0);
     ref = vec3(0);
@@ -368,7 +390,7 @@ vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, ou
   if (obj_mat == MAT_TREE) {
     vec2 noise_p = p.xz;
     noise_p.x += road_deform(p);
-    noise_p.y += 2*fGlobalTime;
+    noise_p.y += terrain_speed * fGlobalTime;
     vec4 noise = texture(texNoise, noise_p);
     col = vec3(.1, .3, 0) - .5*noise.zxz;
     ref = vec3(mix(.01, .3, fresnel));
@@ -417,30 +439,23 @@ vec3 render(inout vec3 ro, inout vec3 rd, inout vec3 ref, out bool no_obj) {
   }
 }
 
+vec3 camera_origin() {
+  vec3 ro = vec3(0.1, 2.4, -4.);
+  ro.y -= sin(M_2PI * fGlobalTime/8);
+  ro.x -= road_deform(ro);
+  return ro;
+}
+
+vec3 camera_lookat() {
+  vec3 lookat = vec3(0.1, 0., 4.);
+  lookat.x -= road_deform(lookat);
+  return lookat;
+}
+
 vec3 render(vec2 pix_coord) {
   vec2 uv = (gl_FragCoord.xy-.5*v2Resolution.xy)/v2Resolution.y;
-  vec3 ro = vec3(0.1, 3., -4.);
-  vec3 lookat = vec3(0.1, 0., 4.);
-  float movement = mod(fGlobalTime, 12) / 8.;
-  if (movement <= 1.) {
-    // movement 0. - 1.
-    float z_offset = 8. * (.5 + .5 * sin(movement * M_PI - .5*M_PI));
-    ro.z += z_offset;
-    ro.y -= 1.7 * sin(movement * M_PI);
-    lookat.z += z_offset;
-  } else {
-    // movement 1. - 1.5
-    movement -= 1.;
-    movement *= 2.;
-    movement += 1.;
-
-    float z_offset = 8. * (.5 + .5 * sin(movement * M_PI - .5*M_PI));
-    ro.z += z_offset;
-    ro.y += 1.7 * sin((movement - 1.) * M_PI);
-    lookat.z += z_offset;
-  }
-  ro.x -= road_deform(ro);
-  lookat.x -= road_deform(lookat);
+  vec3 ro = camera_origin();
+  vec3 lookat = camera_lookat();
 
   float zoom = 1.;
   vec3 rd = camera(uv, ro, lookat, zoom);
