@@ -51,12 +51,83 @@ float sdBoxFrame( vec3 p, vec3 b, float e )
       length(max(vec3(q.x,q.y,p.z),0.0))+min(max(q.x,max(q.y,p.z)),0.0));
 }
 
+float sdRoundedCylinder( vec3 p, float ra, float rb, float h )
+{
+  vec2 d = vec2( length(p.xz)-2.0*ra+rb, abs(p.y) - h );
+  return min(max(d.x,d.y),0.0) + length(max(d,0.0)) - rb;
+}
+
 // Capsule or line
 float sdCapsule( vec3 p, vec3 a, vec3 b, float r )
 {
   vec3 pa = p - a, ba = b - a;
   float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
   return length( pa - ba*h ) - r;
+}
+
+// specialization for a vertical vesica segment at the origin
+float sdVerticalVesicaSegment( in vec3 p, in float h, in float w )
+{
+    // shape constants
+    h *= 0.5;
+    w *= 0.5;
+    float d = 0.5*(h*h-w*w)/w;
+    
+    // project to 2D
+    vec2  q = vec2(length(p.xz), abs(p.y-h));
+    
+    // feature selection (vertex or body)
+    vec3  t = (h*q.x < d*(q.y-h)) ? vec3(0.0,h,0.0) : vec3(-d,0.0,d+w);
+    
+    // distance
+    return length(q-t.xy) - t.z;
+}
+
+//
+// 2D shapes
+//
+
+float sdEquilateralTriangle( in vec2 p, in float r )
+{
+    const float k = sqrt(3.0);
+    p.x = abs(p.x) - r;
+    p.y = p.y + r/k;
+    if( p.x+k*p.y>0.0 ) p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+    p.x -= clamp( p.x, -2.0*r, 0.0 );
+    return -length(p)*sign(p.y);
+}
+
+//
+// Operations
+//
+
+float opSmoothUnion( float d1, float d2, float k )
+{
+    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) - k*h*(1.0-h);
+}
+
+float opSmoothSubtraction( float d1, float d2, float k )
+{
+    float h = clamp( 0.5 - 0.5*(d2+d1)/k, 0.0, 1.0 );
+    return mix( d2, -d1, h ) + k*h*(1.0-h);
+}
+
+float opSmoothIntersection( float d1, float d2, float k )
+{
+    float h = clamp( 0.5 - 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) + k*h*(1.0-h);
+}
+
+float opExtrusion( in vec3 p, in float d, in float h )
+{
+    vec2 w = vec2( d, abs(p.z) - h );
+    return min(max(w.x,w.y),0.0) + length(max(w,0.0));
+}
+
+float opRound( in float d, float rad )
+{
+    return d - rad;
 }
 
 //
@@ -134,6 +205,7 @@ vec3 lighting(inout vec3 ro, inout vec3 rd, float d, int obj_mat, vec3 obj_p, ou
   vec3 n = normal(p);
   vec3 r = reflect(rd, n);
   float dif = clamp(dot(l, n), 0., 1.);
+  float fresnel = pow(clamp(1.+dot(rd, n), 0., 1.), 5.);
 
   // Determine object lighting here
   vec3 col = vec3(1, 1, 0);
@@ -183,7 +255,8 @@ vec3 render(inout vec3 ro, inout vec3 rd, inout vec3 ref, out bool no_obj) {
 
 vec3 render(vec2 pix_coord) {
   vec2 uv = (gl_FragCoord.xy-.5*v2Resolution.xy)/v2Resolution.y;
-  vec3 ro = vec3(5. * sin(fGlobalTime) , 2. + sin(fGlobalTime / 4.), 5. * cos(fGlobalTime));
+  vec3 ro = vec3(0, 2., 5.);
+  ro *= rotateY(fGlobalTime);
   vec3 lookat = vec3(0., 0., 0.);
   float zoom = 1.;
   vec3 rd = camera(uv, ro, lookat, zoom);
